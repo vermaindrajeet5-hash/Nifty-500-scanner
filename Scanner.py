@@ -332,7 +332,7 @@ def main():
 
     result_df.to_csv("signals.csv", index=False)
 
-        print("\nSaved results to signals.csv")
+    print("\nSaved results to signals.csv")
 
     message = "NIFTY 500 SCANNER RESULTS\n\n" + result_df.to_string(index=False)
     send_telegram(message)
