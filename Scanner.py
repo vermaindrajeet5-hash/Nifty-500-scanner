@@ -332,8 +332,28 @@ def main():
 
     result_df.to_csv("signals.csv", index=False)
 
-    print("\nSaved results to signals.csv")
+        print("\nSaved results to signals.csv")
 
+    message = "NIFTY 500 SCANNER RESULTS\n\n" + result_df.to_string(index=False)
+    send_telegram(message)
 
+def send_telegram(message):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id:
+        print("Telegram settings not found")
+        return
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    requests.post(
+        url,
+        data={
+            "chat_id": chat_id,
+            "text": message
+        },
+        timeout=30
+    )
 if __name__ == "__main__":
     main()
