@@ -175,7 +175,9 @@ def get_nifty500_symbols():
     response.raise_for_status()
 
     df = pd.read_csv(
-        pd.io.common.StringIO(response.text)
+    pd.io.common.StringIO(response.text),
+    sep=",",
+    engine="python"
     )
 
     symbols = []
