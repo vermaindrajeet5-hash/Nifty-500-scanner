@@ -19,7 +19,9 @@ from datetime import datetime
 # ============================================================
 
 NIFTY500_URL = (
-    "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
+    NIFTY500_URL = (
+    "https://www.niftyindices.com/IndexConstituent/"
+    "ind_nifty500list.csv"
 )
 
 
