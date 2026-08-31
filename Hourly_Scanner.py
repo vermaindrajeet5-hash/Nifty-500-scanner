@@ -32,7 +32,7 @@ IST = ZoneInfo("Asia/Kolkata")
 
 NIFTY500_URL = (
     "https://www.niftyindices.com/IndexConstituent/"
-    "IndexConstituent_NIFTY_500.csv"
+"ind_nifty500list.csv"
 )
 
 
