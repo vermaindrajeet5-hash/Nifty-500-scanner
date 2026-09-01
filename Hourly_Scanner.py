@@ -1,148 +1,114 @@
-name: Nifty 500 Hourly Scanner
+import os
+import time
+import smtplib
+import requests
+import pandas as pd
+import yfinance as yf
 
-on:
-  workflow_dispatch:
-
-  schedule:
-    - cron: "45 4 * * 1-5"
-    - cron: "45 5 * * 1-5"
-    - cron: "45 6 * * 1-5"
-    - cron: "45 7 * * 1-5"
-    - cron: "45 8 * * 1-5"
-    - cron: "45 9 * * 1-5"
-
-jobs:
-
-  scan:
-
-    runs-on: ubuntu-latest
-
-    steps:
-
-      # ------------------------------------------------------
-      # CHECKOUT REPOSITORY
-      # ------------------------------------------------------
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 
-      # ------------------------------------------------------
-      # SETUP PYTHON
-      # ------------------------------------------------------
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-
-      # ------------------------------------------------------
-      # INSTALL DEPENDENCIES
-      # ------------------------------------------------------
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-
-
-      # ------------------------------------------------------
-      # RUN NIFTY 500 SCANNER
-      # ------------------------------------------------------
-
-      - name: Run hourly scanner
-        run: |
-          python Hourly_Scanner.py
+# ============================================================
+# NIFTY 500 HOURLY SCANNER
+# ============================================================
+#
+# Runs after each completed 1-hour candle.
+#
+# Conditions:
+#
+# 1. Previous completed 1-hour RSI(5) < 30
+#
+# Higher timeframe conditions:
+# 2. Monthly RSI(5) > Monthly RSI(5) SMA(14)
+# 3. Weekly RSI(5) > Weekly RSI(5) SMA(14)
+# 4. Daily RSI(5) > Daily RSI(5) SMA(14)
+# 5. Monthly ADX(14) >= 25
+# 6. Weekly ADX(14) >= 25
+# 7. Daily ADX(14) >= 25
+#
+# Supertrend is NOT used.
+# Telegram is NOT used.
+# Results are sent by Gmail.
+# ============================================================
 
 
-      # ------------------------------------------------------
-      # CHECK SCANNER RESULT
-      # ------------------------------------------------------
+IST = ZoneInfo("Asia/Kolkata")
 
-      - name: Check scanner result
-        run: |
-
-          if [ -f "hourly_signals.csv" ]; then
-
-            echo "hourly_signals.csv FOUND"
-
-            ls -lh hourly_signals.csv
-
-            echo "----------------------------------------"
-            echo "SCANNER RESULTS"
-            echo "----------------------------------------"
-
-            cat hourly_signals.csv
-
-          else
-
-            echo "hourly_signals.csv NOT FOUND"
-
-          fi
+NIFTY500_URL = (
+    "https://www.niftyindices.com/IndexConstituent/"
+    "ind_nifty500list.csv"
+)
 
 
-      # ------------------------------------------------------
-      # SEND RESULTS BY GMAIL
-      # ------------------------------------------------------
+# ============================================================
+# RSI - WILDER
+# ============================================================
 
-      - name: Send results by Gmail
+def rsi(series, period=5):
 
-        env:
+    delta = series.diff()
 
-          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
 
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+    avg_gain = gain.ewm(
+        alpha=1 / period,
+        min_periods=period,
+        adjust=False
+    ).mean()
 
-          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+    avg_loss = loss.ewm(
+        alpha=1 / period,
+        min_periods=period,
+        adjust=False
+    ).mean()
 
-        run: |
+    rs = avg_gain / avg_loss
 
-          python - <<'PY'
-
-          import os
-          import smtplib
-
-          from pathlib import Path
-
-          from email.message import EmailMessage
-
-
-          # --------------------------------------------------
-          # GMAIL SETTINGS
-          # --------------------------------------------------
-
-          username = os.environ["GMAIL_USERNAME"]
-
-          app_password = os.environ["GMAIL_APP_PASSWORD"]
-
-          recipient = os.environ["GMAIL_TO"]
+    return 100 - (100 / (1 + rs))
 
 
-          # --------------------------------------------------
-          # SCANNER OUTPUT FILE
-          # --------------------------------------------------
+# ============================================================
+# ADX - WILDER
+# ============================================================
 
-          file_path = Path("hourly_signals.csv")
+def adx(data, period=14):
 
+    high = data["High"]
+    low = data["Low"]
+    close = data["Close"]
 
-          # --------------------------------------------------
-          # CREATE EMAIL
-          # --------------------------------------------------
+    prev_close = close.shift(1)
 
-          email = EmailMessage()
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
 
-          email["From"] = username
+    tr = pd.concat(
+        [tr1, tr2, tr3],
+        axis=1
+    ).max(axis=1)
 
-          email["To"] = recipient
+    up_move = high.diff()
+    down_move = -low.diff()
 
-          email["Subject"] = "NIFTY 500 Hourly Scanner Results"
+    plus_dm = pd.Series(
+        0.0,
+        index=data.index
+    )
 
+    minus_dm = pd.Series(
+        0.0,
+        index=data.index
+    )
 
-          # --------------------------------------------------
-          # IF MATCHING STOCKS WERE FOUND
-          # --------------------------------------------------
+    plus_condition = (
+        (up_move > down_move) &
+        (up_move > 0)
+    )
 
-          if file_path.exists():
-
-              email.set_content(
-                  "
+    minus_condition = (
+        (down_move > up_move) &
