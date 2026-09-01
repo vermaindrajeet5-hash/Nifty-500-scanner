@@ -1,1 +1,0 @@
-# Nifty-500-scanner
