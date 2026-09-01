@@ -451,14 +451,19 @@ def send_telegram(message):
 
     try:
 
-        requests.post(
-            url,
-            data={
-                "chat_id": chat_id,
-                "text": message
-            },
-            timeout=30
-        )
+    response = requests.post(
+    url,
+    data={
+        "chat_id": chat_id,
+        "text": message
+    },
+    timeout=30
+)
+
+print("Telegram HTTP status:", response.status_code)
+print("Telegram response:", response.text)
+
+response.raise_for_status()
 
     except Exception as e:
 
