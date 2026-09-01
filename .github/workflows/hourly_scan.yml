@@ -14,10 +14,6 @@ jobs:
   scan:
     runs-on: ubuntu-latest
 
-    env:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,5 +26,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Check Telegram settings
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "BOT TOKEN: FOUND"
+          else
+            echo "BOT TOKEN: MISSING"
+          fi
+
+          if [ -n "$TELEGRAM_CHAT_ID" ]; then
+            echo "CHAT ID: FOUND"
+          else
+            echo "CHAT ID: MISSING"
+          fi
+
       - name: Run hourly scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python Hourly_Scanner.py
