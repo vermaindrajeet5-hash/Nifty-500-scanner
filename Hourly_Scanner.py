@@ -255,3 +255,536 @@ def download_data(symbol, period, interval):
         "High",
         "Low",
         "Close",
+        "Volume"
+    ]
+
+    for column in required_columns:
+
+        if column not in data.columns:
+            return None
+
+    data = data[
+        required_columns
+    ].dropna()
+
+    return data
+
+
+# ============================================================
+# CHECK ONE STOCK
+# ============================================================
+
+def check_stock(symbol):
+
+    try:
+
+        # ----------------------------------------------------
+        # DAILY DATA
+        # ----------------------------------------------------
+
+        daily = download_data(
+            symbol,
+            "3y",
+            "1d"
+        )
+
+        if daily is None:
+            return None
+
+        if len(daily) < 100:
+            return None
+
+        # ----------------------------------------------------
+        # WEEKLY / MONTHLY DATA
+        # ----------------------------------------------------
+
+        weekly = make_weekly(daily)
+        monthly = make_monthly(daily)
+
+        if len(weekly) < 30:
+            return None
+
+        if len(monthly) < 30:
+            return None
+
+        # ----------------------------------------------------
+        # DAILY CONDITIONS
+        # ----------------------------------------------------
+
+        daily_rsi = rsi(
+            daily["Close"],
+            5
+        )
+
+        daily_rsi_sma = (
+            daily_rsi
+            .rolling(14)
+            .mean()
+        )
+
+        daily_adx = adx(
+            daily,
+            14
+        )
+
+        d_rsi = daily_rsi.iloc[-1]
+        d_rsi_sma = daily_rsi_sma.iloc[-1]
+        d_adx = daily_adx.iloc[-1]
+
+        if (
+            pd.isna(d_rsi)
+            or pd.isna(d_rsi_sma)
+            or pd.isna(d_adx)
+        ):
+            return None
+
+        if not (
+            d_rsi > d_rsi_sma
+            and d_adx >= 25
+        ):
+            return None
+
+        # ----------------------------------------------------
+        # WEEKLY CONDITIONS
+        # ----------------------------------------------------
+
+        weekly_rsi = rsi(
+            weekly["Close"],
+            5
+        )
+
+        weekly_rsi_sma = (
+            weekly_rsi
+            .rolling(14)
+            .mean()
+        )
+
+        weekly_adx = adx(
+            weekly,
+            14
+        )
+
+        w_rsi = weekly_rsi.iloc[-1]
+        w_rsi_sma = weekly_rsi_sma.iloc[-1]
+        w_adx = weekly_adx.iloc[-1]
+
+        if (
+            pd.isna(w_rsi)
+            or pd.isna(w_rsi_sma)
+            or pd.isna(w_adx)
+        ):
+            return None
+
+        if not (
+            w_rsi > w_rsi_sma
+            and w_adx >= 25
+        ):
+            return None
+
+        # ----------------------------------------------------
+        # MONTHLY CONDITIONS
+        # ----------------------------------------------------
+
+        monthly_rsi = rsi(
+            monthly["Close"],
+            5
+        )
+
+        monthly_rsi_sma = (
+            monthly_rsi
+            .rolling(14)
+            .mean()
+        )
+
+        monthly_adx = adx(
+            monthly,
+            14
+        )
+
+        m_rsi = monthly_rsi.iloc[-1]
+        m_rsi_sma = monthly_rsi_sma.iloc[-1]
+        m_adx = monthly_adx.iloc[-1]
+
+        if (
+            pd.isna(m_rsi)
+            or pd.isna(m_rsi_sma)
+            or pd.isna(m_adx)
+        ):
+            return None
+
+        if not (
+            m_rsi > m_rsi_sma
+            and m_adx >= 25
+        ):
+            return None
+
+        # ----------------------------------------------------
+        # 1-HOUR DATA
+        # ----------------------------------------------------
+
+        hourly = download_data(
+            symbol,
+            "60d",
+            "1h"
+        )
+
+        if hourly is None:
+            return None
+
+        if len(hourly) < 30:
+            return None
+
+        # ----------------------------------------------------
+        # CONVERT HOURLY DATA TO IST
+        # ----------------------------------------------------
+
+        if hourly.index.tz is None:
+
+            hourly.index = (
+                hourly.index
+                .tz_localize("UTC")
+            )
+
+        hourly.index = (
+            hourly.index
+            .tz_convert(IST)
+        )
+
+        # ----------------------------------------------------
+        # ONLY COMPLETED HOURLY CANDLES
+        # ----------------------------------------------------
+
+        now_ist = datetime.now(IST)
+
+        completed = hourly[
+            hourly.index + timedelta(hours=1)
+            <= now_ist
+        ].copy()
+
+        if len(completed) < 10:
+            return None
+
+        # ----------------------------------------------------
+        # HOURLY RSI
+        # ----------------------------------------------------
+
+        hourly_rsi = rsi(
+            completed["Close"],
+            5
+        )
+
+        previous_hour_rsi = (
+            hourly_rsi.iloc[-1]
+        )
+
+        if pd.isna(previous_hour_rsi):
+            return None
+
+        # ----------------------------------------------------
+        # FINAL HOURLY CONDITION
+        #
+        # Previous completed 1-hour RSI(5) < 30
+        # ----------------------------------------------------
+
+        if previous_hour_rsi >= 30:
+            return None
+
+        # ----------------------------------------------------
+        # MATCH
+        # ----------------------------------------------------
+
+        return {
+            "Stock":
+                symbol.replace(".NS", ""),
+
+            "Monthly RSI(5)":
+                round(float(m_rsi), 2),
+
+            "Monthly RSI SMA(14)":
+                round(float(m_rsi_sma), 2),
+
+            "Monthly ADX(14)":
+                round(float(m_adx), 2),
+
+            "Weekly RSI(5)":
+                round(float(w_rsi), 2),
+
+            "Weekly RSI SMA(14)":
+                round(float(w_rsi_sma), 2),
+
+            "Weekly ADX(14)":
+                round(float(w_adx), 2),
+
+            "Daily RSI(5)":
+                round(float(d_rsi), 2),
+
+            "Daily RSI SMA(14)":
+                round(float(d_rsi_sma), 2),
+
+            "Daily ADX(14)":
+                round(float(d_adx), 2),
+
+            "Previous 1H RSI(5)":
+                round(
+                    float(previous_hour_rsi),
+                    2
+                )
+        }
+
+    except Exception as e:
+
+        print(
+            f"Error processing {symbol}: {e}"
+        )
+
+        return None
+
+
+# ============================================================
+# GMAIL
+# ============================================================
+
+def send_email(subject, body):
+
+    username = os.environ.get(
+        "GMAIL_USERNAME"
+    )
+
+    app_password = os.environ.get(
+        "GMAIL_APP_PASSWORD"
+    )
+
+    recipient = os.environ.get(
+        "GMAIL_TO"
+    )
+
+    if not username:
+
+        print(
+            "GMAIL_USERNAME not found"
+        )
+
+        return
+
+    if not app_password:
+
+        print(
+            "GMAIL_APP_PASSWORD not found"
+        )
+
+        return
+
+    if not recipient:
+
+        print(
+            "GMAIL_TO not found"
+        )
+
+        return
+
+    message = MIMEMultipart()
+
+    message["From"] = username
+    message["To"] = recipient
+    message["Subject"] = subject
+
+    message.attach(
+        MIMEText(
+            body,
+            "plain"
+        )
+    )
+
+    try:
+
+        with smtplib.SMTP_SSL(
+            "smtp.gmail.com",
+            465
+        ) as server:
+
+            server.login(
+                username,
+                app_password
+            )
+
+            server.send_message(
+                message
+            )
+
+        print(
+            "GMAIL: EMAIL SENT SUCCESSFULLY"
+        )
+
+    except Exception as e:
+
+        print(
+            f"GMAIL ERROR: {e}"
+        )
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main():
+
+    print("=" * 60)
+    print(
+        "NIFTY 500 HOURLY SCANNER"
+    )
+    print("=" * 60)
+
+    now = datetime.now(IST)
+
+    print(
+        "Scan time:",
+        now.strftime(
+            "%Y-%m-%d %H:%M:%S IST"
+        )
+    )
+
+    print(
+        "\nWaiting 10 seconds for "
+        "market data to update..."
+    )
+
+    time.sleep(10)
+
+    print(
+        "\nGetting NIFTY 500 stocks..."
+    )
+
+    symbols = get_nifty500_symbols()
+
+    print(
+        f"Found {len(symbols)} "
+        "NIFTY 500 stocks."
+    )
+
+    results = []
+
+    for i, symbol in enumerate(
+        symbols,
+        1
+    ):
+
+        print(
+            f"[{i}/{len(symbols)}] "
+            f"Checking {symbol}"
+        )
+
+        result = check_stock(
+            symbol
+        )
+
+        if result:
+
+            results.append(
+                result
+            )
+
+            print(
+                f"  MATCH: {symbol}"
+            )
+
+    # --------------------------------------------------------
+    # SCAN COMPLETE
+    # --------------------------------------------------------
+
+    print(
+        "\n" + "=" * 60
+    )
+
+    print(
+        "HOURLY SCAN COMPLETE"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    # --------------------------------------------------------
+    # NO MATCHES
+    # --------------------------------------------------------
+
+    if not results:
+
+        print(
+            "\nNo stocks matched "
+            "all conditions."
+        )
+
+        send_email(
+            "NIFTY 500 Hourly Scanner - No Matches",
+            (
+                "NIFTY 500 HOURLY SCANNER\n\n"
+                "No stocks matched all conditions.\n\n"
+                f"Scan time: "
+                f"{now.strftime('%Y-%m-%d %H:%M:%S IST')}"
+            )
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # RESULTS
+    # --------------------------------------------------------
+
+    result_df = pd.DataFrame(
+        results
+    )
+
+    print(
+        f"\n{len(result_df)} "
+        "stock(s) matched all conditions:\n"
+    )
+
+    print(
+        result_df.to_string(
+            index=False
+        )
+    )
+
+    # --------------------------------------------------------
+    # SAVE CSV
+    # --------------------------------------------------------
+
+    result_df.to_csv(
+        "hourly_signals.csv",
+        index=False
+    )
+
+    print(
+        "\nSaved results to "
+        "hourly_signals.csv"
+    )
+
+    # --------------------------------------------------------
+    # EMAIL RESULTS
+    # --------------------------------------------------------
+
+    message = (
+        "NIFTY 500 HOURLY SCANNER RESULTS\n\n"
+        f"Scan time: "
+        f"{now.strftime('%Y-%m-%d %H:%M:%S IST')}\n\n"
+        f"{len(result_df)} stock(s) matched "
+        "all conditions.\n\n"
+        +
+        result_df.to_string(
+            index=False
+        )
+    )
+
+    send_email(
+        "NIFTY 500 Hourly Scanner Results",
+        message
+    )
+
+
+# ============================================================
+# START
+# ============================================================
+
+if __name__ == "__main__":
+
+    main()
