@@ -2,6 +2,7 @@ name: Nifty 500 Hourly Scanner
 
 on:
   workflow_dispatch:
+
   schedule:
     - cron: "45 4 * * 1-5"
     - cron: "45 5 * * 1-5"
@@ -11,30 +12,220 @@ on:
     - cron: "45 9 * * 1-5"
 
 jobs:
+
   scan:
+
     runs-on: ubuntu-latest
 
     steps:
+
+      # ======================================================
+      # CHECKOUT
+      # ======================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
+
+      # ======================================================
+      # SETUP PYTHON
+      # ======================================================
+
       - name: Setup Python
         uses: actions/setup-python@v5
+
         with:
           python-version: "3.11"
 
+
+      # ======================================================
+      # INSTALL DEPENDENCIES
+      # ======================================================
+
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+
+
+      # ======================================================
+      # CHECK TELEGRAM SETTINGS
+      # ======================================================
 
       - name: Check Telegram settings
+
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
         run: |
+
           if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
             echo "BOT TOKEN: FOUND"
           else
             echo "BOT TOKEN: MISSING"
+          fi
+
+          if [ -n "$TELEGRAM_CHAT_ID" ]; then
+            echo "CHAT ID: FOUND"
+          else
+            echo "CHAT ID: MISSING"
+          fi
+
+
+      # ======================================================
+      # CHECK GMAIL SETTINGS
+      # ======================================================
+
+      - name: Check Gmail settings
+
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+
+        run: |
+
+          if [ -n "$GMAIL_USERNAME" ]; then
+            echo "GMAIL USERNAME: FOUND"
+          else
+            echo "GMAIL USERNAME: MISSING"
+          fi
+
+          if [ -n "$GMAIL_APP_PASSWORD" ]; then
+            echo "GMAIL APP PASSWORD: FOUND"
+          else
+            echo "GMAIL APP PASSWORD: MISSING"
+          fi
+
+          if [ -n "$GMAIL_TO" ]; then
+            echo "GMAIL TO: FOUND"
+          else
+            echo "GMAIL TO: MISSING"
+          fi
+
+
+      # ======================================================
+      # RUN HOURLY SCANNER
+      # ======================================================
+
+      - name: Run hourly scanner
+
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+        run: |
+          python Hourly_Scanner.py
+
+
+      # ======================================================
+      # SEND RESULTS BY GMAIL
+      # ======================================================
+
+      - name: Send scanner results by Gmail
+
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+
+        run: |
+
+          python - <<'PY'
+
+          import os
+          import smtplib
+          from email.message import EmailMessage
+          from pathlib import Path
+
+
+          username = os.environ["GMAIL_USERNAME"]
+          app_password = os.environ["GMAIL_APP_PASSWORD"]
+          recipient = os.environ["GMAIL_TO"]
+
+
+          attachment = Path("hourly_signals.csv")
+
+
+          message = EmailMessage()
+
+          message["From"] = username
+          message["To"] = recipient
+
+          message["Subject"] = (
+              "NIFTY 500 Hourly Scanner Results"
+          )
+
+
+          if attachment.exists():
+
+              message.set_content(
+                  "NIFTY 500 HOURLY SCANNER\n\n"
+                  "The hourly scan has completed.\n\n"
+                  "The matching stocks are attached "
+                  "in hourly_signals.csv.\n"
+              )
+
+              with open(
+                  attachment,
+                  "rb"
+              ) as f:
+
+                  file_data = f.read()
+
+
+              message.add_attachment(
+                  file_data,
+                  maintype="text",
+                  subtype="csv",
+                  filename="hourly_signals.csv"
+              )
+
+              print(
+                  "Attachment found: hourly_signals.csv"
+              )
+
+          else:
+
+              message.set_content(
+                  "NIFTY 500 HOURLY SCANNER\n\n"
+                  "The hourly scan completed, "
+                  "but no hourly_signals.csv file "
+                  "was created.\n\n"
+                  "This normally means no stocks "
+                  "matched all conditions."
+              )
+
+              print(
+                  "No hourly_signals.csv found."
+              )
+
+
+          print(
+              "Connecting to Gmail..."
+          )
+
+
+          with smtplib.SMTP_SSL(
+              "smtp.gmail.com",
+              465
+          ) as server:
+
+              server.login(
+                  username,
+                  app_password
+              )
+
+              server.send_message(
+                  message
+              )
+
+
+          print(
+              "GMAIL: EMAIL SENT SUCCESSFULLY"
+          )
+
+          PY            echo "BOT TOKEN: MISSING"
           fi
 
           if [ -n "$TELEGRAM_CHAT_ID" ]; then
