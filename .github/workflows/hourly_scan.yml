@@ -19,22 +19,112 @@ jobs:
 
     steps:
 
-      # ======================================================
-      # CHECKOUT
-      # ======================================================
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # ======================================================
-      # SETUP PYTHON
-      # ======================================================
-
       - name: Setup Python
         uses: actions/setup-python@v5
-
         with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run hourly scanner
+        run: |
+          python Hourly_Scanner.py
+
+      - name: Check scanner result
+        run: |
+          if [ -f "signals.csv" ]; then
+            echo "signals.csv FOUND"
+            ls -lh signals.csv
+            echo "--------------------------------"
+            cat signals.csv
+          else
+            echo "signals.csv NOT FOUND"
+          fi
+
+      - name: Send results by Gmail
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+
+        run: |
+
+          python - <<'PY'
+
+          import os
+          import smtplib
+          from pathlib import Path
+          from email.message import EmailMessage
+
+          username = os.environ["GMAIL_USERNAME"]
+          app_password = os.environ["GMAIL_APP_PASSWORD"]
+          recipient = os.environ["GMAIL_TO"]
+
+          file_path = Path("signals.csv")
+
+          email = EmailMessage()
+
+          email["From"] = username
+          email["To"] = recipient
+          email["Subject"] = "NIFTY 500 Hourly Scanner Results"
+
+          if file_path.exists():
+
+              email.set_content(
+                  "NIFTY 500 HOURLY SCANNER\n\n"
+                  "The scan has completed successfully.\n\n"
+                  "The matching stocks are attached "
+                  "as signals.csv."
+              )
+
+              with open(file_path, "rb") as f:
+                  data = f.read()
+
+              email.add_attachment(
+                  data,
+                  maintype="text",
+                  subtype="csv",
+                  filename="signals.csv"
+              )
+
+              print("signals.csv FOUND")
+              print("Sending scanner results by Gmail...")
+
+          else:
+
+              email.set_content(
+                  "NIFTY 500 HOURLY SCANNER\n\n"
+                  "The scan completed, but no signals.csv "
+                  "file was created.\n\n"
+                  "This may mean that no stocks matched "
+                  "the scanner conditions."
+              )
+
+              print(
+                  "signals.csv NOT FOUND - "
+                  "sending notification email anyway."
+              )
+
+          with smtplib.SMTP_SSL(
+              "smtp.gmail.com",
+              465
+          ) as server:
+
+              server.login(
+                  username,
+                  app_password
+              )
+
+              server.send_message(email)
+
+          print("GMAIL: EMAIL SENT SUCCESSFULLY")
+
+          PY        with:
           python-version: "3.11"
 
 
