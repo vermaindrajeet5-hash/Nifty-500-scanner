@@ -1,0 +1,42 @@
+name: Data Range Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install yfinance
+        run: |
+          pip install yfinance
+
+      - name: Check daily data range
+        run: |
+          python - <<'PY'
+          import yfinance as yf
+
+          symbol = "RELIANCE.NS"
+
+          data = yf.download(
+              symbol,
+              period="6y",
+              interval="1d",
+              auto_adjust=False,
+              progress=False,
+              threads=False
+          )
+
+          if data.empty:
+              print("NO DATA RECEIVED")
+          else:
+              print("FIRST DATE:", data.index.min())
+              print("LAST DATE:", data.index.max())
+              print("NUMBER OF DAILY ROWS:", len(data))
+          PY
