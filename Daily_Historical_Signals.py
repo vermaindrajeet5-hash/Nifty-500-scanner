@@ -9,7 +9,7 @@ from io import StringIO
 # SETTINGS
 # ============================================================
 
-YEARS = 6
+YEARS = 10
 
 NIFTY500_URL = (
     "https://www.niftyindices.com/IndexConstituent/"
