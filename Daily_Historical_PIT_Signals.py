@@ -27,10 +27,35 @@ MEMBERSHIP_URL = (
     "index_membership_history.csv"
 )
 
-NIFTY500_URL = (
-    "https://www.niftyindices.com/IndexConstituent/"
-    "ind_nifty500list.csv"
-)
+
+# ============================================================
+# DATE NORMALIZATION
+# ============================================================
+
+def normalize_dates(index):
+    """
+    Force all datetime indexes to the exact same format.
+
+    This prevents errors such as:
+
+    datetime64[s] vs datetime64[us]
+
+    when using pandas merge_asof().
+    """
+
+    idx = pd.DatetimeIndex(index)
+
+    # Remove timezone if present
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
+
+    # Normalize to midnight
+    idx = idx.normalize()
+
+    # Force nanosecond precision
+    idx = idx.astype("datetime64[ns]")
+
+    return idx
 
 
 # ============================================================
@@ -159,6 +184,10 @@ def load_membership():
         StringIO(response.text)
     )
 
+    # --------------------------------------------------------
+    # Convert membership dates
+    # --------------------------------------------------------
+
     membership["valid_from"] = pd.to_datetime(
         membership["valid_from"],
         errors="coerce"
@@ -169,7 +198,34 @@ def load_membership():
         errors="coerce"
     )
 
-    # Handle possible naming variations
+    # Remove timezone if any
+    if membership["valid_from"].dt.tz is not None:
+        membership["valid_from"] = (
+            membership["valid_from"]
+            .dt.tz_localize(None)
+        )
+
+    if membership["valid_to"].dt.tz is not None:
+        membership["valid_to"] = (
+            membership["valid_to"]
+            .dt.tz_localize(None)
+        )
+
+    # Force nanosecond precision
+    membership["valid_from"] = (
+        membership["valid_from"]
+        .astype("datetime64[ns]")
+    )
+
+    membership["valid_to"] = (
+        membership["valid_to"]
+        .astype("datetime64[ns]")
+    )
+
+    # --------------------------------------------------------
+    # Clean names
+    # --------------------------------------------------------
+
     membership["index_name"] = (
         membership["index_name"]
         .astype(str)
@@ -183,8 +239,13 @@ def load_membership():
         .str.upper()
     )
 
+    # --------------------------------------------------------
+    # Keep only NIFTY 500
+    # --------------------------------------------------------
+
     membership = membership[
-        membership["index_name"].str.upper()
+        membership["index_name"]
+        .str.upper()
         .eq("NIFTY 500")
     ].copy()
 
@@ -207,14 +268,17 @@ def load_membership():
 
     if not membership.empty:
 
+        min_date = membership["valid_from"].min()
+
+        max_valid_to = membership["valid_to"].max()
+
         print(
             "Membership coverage:",
-            membership["valid_from"].min().date(),
+            min_date.date(),
             "to",
             (
-                membership["valid_to"]
-                .max()
-                if membership["valid_to"].notna().any()
+                max_valid_to
+                if pd.notna(max_valid_to)
                 else "current"
             )
         )
@@ -232,6 +296,13 @@ def members_on_date(
 ):
 
     date = pd.Timestamp(date)
+
+    # Force same precision
+    date = pd.Timestamp(
+        date.to_datetime64().astype(
+            "datetime64[ns]"
+        )
+    )
 
     active = membership[
         (membership["valid_from"] <= date) &
@@ -320,6 +391,10 @@ def build_weekly_data(data):
         14
     )
 
+    weekly.index = normalize_dates(
+        weekly.index
+    )
+
     return weekly[
         [
             "RSI5",
@@ -362,6 +437,10 @@ def build_monthly_data(data):
         14
     )
 
+    monthly.index = normalize_dates(
+        monthly.index
+    )
+
     return monthly[
         [
             "RSI5",
@@ -387,11 +466,7 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # Get enough history.
-        #
-        # We request 11 years so the monthly indicators have
-        # additional warm-up data before the requested
-        # 10-year test period.
+        # Download 11 years of daily data
         # ----------------------------------------------------
 
         data = yf.download(
@@ -405,6 +480,10 @@ def process_stock(
 
         if data is None or data.empty:
             return []
+
+        # ----------------------------------------------------
+        # Flatten Yahoo MultiIndex
+        # ----------------------------------------------------
 
         if isinstance(
             data.columns,
@@ -439,6 +518,19 @@ def process_stock(
             return []
 
         # ----------------------------------------------------
+        # IMPORTANT:
+        # Normalize Yahoo dates BEFORE calculations.
+        # ----------------------------------------------------
+
+        data.index = normalize_dates(
+            data.index
+        )
+
+        data.sort_index(
+            inplace=True
+        )
+
+        # ----------------------------------------------------
         # Daily RSI
         # ----------------------------------------------------
 
@@ -464,23 +556,43 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # Point-in-time merge
-        #
-        # Only completed weekly/monthly candles are used.
+        # Sort everything before merge_asof
         # ----------------------------------------------------
 
         data = data.sort_index()
+
         weekly = weekly.sort_index()
+
         monthly = monthly.sort_index()
 
-        # A daily date receives the latest COMPLETED
-        # weekly candle before that date.
+        # ----------------------------------------------------
+        # COMPLETED WEEKLY CANDLE
+        #
+        # Friday weekly candle becomes available only after
+        # that week has completed.
+        #
+        # Shift by one day so Friday's incomplete/current
+        # weekly candle is not accidentally used.
+        # ----------------------------------------------------
+
         weekly_for_daily = weekly.copy()
 
         weekly_for_daily.index = (
             weekly_for_daily.index
             + pd.Timedelta(days=1)
         )
+
+        weekly_for_daily.index = normalize_dates(
+            weekly_for_daily.index
+        )
+
+        weekly_for_daily.sort_index(
+            inplace=True
+        )
+
+        # ----------------------------------------------------
+        # WEEKLY MERGE
+        # ----------------------------------------------------
 
         data = pd.merge_asof(
             data,
@@ -490,14 +602,28 @@ def process_stock(
             direction="backward"
         )
 
-        # A daily date receives the latest COMPLETED
-        # monthly candle before that date.
+        # ----------------------------------------------------
+        # COMPLETED MONTHLY CANDLE
+        # ----------------------------------------------------
+
         monthly_for_daily = monthly.copy()
 
         monthly_for_daily.index = (
             monthly_for_daily.index
             + pd.Timedelta(days=1)
         )
+
+        monthly_for_daily.index = normalize_dates(
+            monthly_for_daily.index
+        )
+
+        monthly_for_daily.sort_index(
+            inplace=True
+        )
+
+        # ----------------------------------------------------
+        # MONTHLY MERGE
+        # ----------------------------------------------------
 
         data = pd.merge_asof(
             data,
@@ -512,7 +638,7 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # Keep only requested 10-year period
+        # Keep requested 10-year period
         # ----------------------------------------------------
 
         data = data[
@@ -526,8 +652,25 @@ def process_stock(
             )
         ].copy()
 
+        if data.empty:
+            return []
+
         # ----------------------------------------------------
         # EXACT 5 CONDITIONS
+        #
+        # 1. Monthly RSI(5)
+        #    > Monthly RSI SMA(14)
+        #
+        # 2. Weekly RSI(5)
+        #    > Weekly RSI SMA(14)
+        #
+        # 3. Monthly ADX(14) >= 25
+        #
+        # 4. Daily RSI(5) < 30
+        #
+        # 5. Weekly ADX(14) >= 25
+        #
+        # NO DAILY ADX CONDITION.
         # ----------------------------------------------------
 
         condition_1 = (
@@ -571,9 +714,12 @@ def process_stock(
 
         results = []
 
+        # ----------------------------------------------------
+        # POINT-IN-TIME NIFTY 500 MEMBERSHIP
+        # ----------------------------------------------------
+
         for date in matches.index:
 
-            # Point-in-time NIFTY 500 membership
             active_members = members_on_date(
                 membership,
                 date
@@ -609,10 +755,12 @@ def process_stock(
 def main():
 
     print("=" * 70)
+
     print(
         "NIFTY 500 POINT-IN-TIME "
         "10-YEAR DAILY SIGNAL SCANNER"
     )
+
     print("=" * 70)
 
     print(
@@ -624,7 +772,15 @@ def main():
 
     print()
 
+    # --------------------------------------------------------
+    # Load historical membership
+    # --------------------------------------------------------
+
     membership = load_membership()
+
+    # --------------------------------------------------------
+    # Get historical symbols
+    # --------------------------------------------------------
 
     symbols = get_historical_symbols(
         membership
@@ -633,6 +789,10 @@ def main():
     print()
 
     all_results = []
+
+    # --------------------------------------------------------
+    # Scan stocks
+    # --------------------------------------------------------
 
     for number, symbol in enumerate(
         symbols,
@@ -652,7 +812,7 @@ def main():
             results
         )
 
-        # Keep request rate conservative.
+        # Conservative Yahoo request rate
         time.sleep(0.25)
 
     # --------------------------------------------------------
@@ -686,9 +846,16 @@ def main():
         index=False
     )
 
+    # --------------------------------------------------------
+    # SUMMARY
+    # --------------------------------------------------------
+
     print()
+
     print("=" * 70)
+
     print("SCAN COMPLETE")
+
     print("=" * 70)
 
     print(
@@ -702,6 +869,7 @@ def main():
     if not result_df.empty:
 
         print()
+
         print(
             result_df.to_string(
                 index=False
@@ -711,10 +879,15 @@ def main():
     else:
 
         print()
+
         print(
             "No signals found."
         )
 
+
+# ============================================================
+# RUN
+# ============================================================
 
 if __name__ == "__main__":
     main()
