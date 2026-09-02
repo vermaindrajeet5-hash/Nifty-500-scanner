@@ -1,0 +1,61 @@
+name: Nifty 500 Daily Scanner
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 11 * * 1-5"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Gmail settings
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+        run: |
+          if [ -n "$GMAIL_USERNAME" ]; then
+            echo "GMAIL_USERNAME: FOUND"
+          else
+            echo "GMAIL_USERNAME: MISSING"
+            exit 1
+          fi
+
+          if [ -n "$GMAIL_APP_PASSWORD" ]; then
+            echo "GMAIL_APP_PASSWORD: FOUND"
+          else
+            echo "GMAIL_APP_PASSWORD: MISSING"
+            exit 1
+          fi
+
+          if [ -n "$GMAIL_TO" ]; then
+            echo "GMAIL_TO: FOUND"
+          else
+            echo "GMAIL_TO: MISSING"
+            exit 1
+          fi
+
+      - name: Run Nifty 500 daily scanner
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+        run: |
+          python Daily_Scanner.py
