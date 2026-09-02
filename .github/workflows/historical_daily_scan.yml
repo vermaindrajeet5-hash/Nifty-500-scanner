@@ -26,6 +26,60 @@ jobs:
         run: |
           python Daily_Historical_Signals.py
 
+      - name: Send results by Gmail
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+        run: |
+          python - <<'PY'
+          import os
+          import smtplib
+          import pandas as pd
+          from email.mime.text import MIMEText
+
+          username = os.environ["GMAIL_USERNAME"]
+          app_password = os.environ["GMAIL_APP_PASSWORD"]
+          recipient = os.environ["GMAIL_TO"]
+
+          file = "daily_historical_signals.csv"
+
+          df = pd.read_csv(file)
+
+          if df.empty:
+              body = """NIFTY 500 HISTORICAL DAILY SIGNALS
+
+          No historical signals were found.
+          """
+          else:
+              grouped = df.groupby("Date")["Stock"].apply(list)
+
+              lines = [
+                  "NIFTY 500 HISTORICAL DAILY SIGNALS",
+                  "",
+                  "Date        Stocks",
+                  "------------------------------"
+              ]
+
+              for date, stocks in grouped.items():
+                  lines.append(
+                      f"{date}  {', '.join(stocks)}"
+                  )
+
+              body = "\n".join(lines)
+
+          message = MIMEText(body)
+          message["Subject"] = "NIFTY 500 HISTORICAL DAILY SIGNALS"
+          message["From"] = username
+          message["To"] = recipient
+
+          with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+              server.login(username, app_password)
+              server.send_message(message)
+
+          print("GMAIL: EMAIL SENT SUCCESSFULLY")
+          PY
+
       - name: Upload historical signals
         uses: actions/upload-artifact@v4
         with:
