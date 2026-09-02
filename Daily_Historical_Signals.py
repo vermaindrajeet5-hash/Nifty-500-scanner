@@ -1,8 +1,8 @@
-import os
 import time
 import requests
 import pandas as pd
 import yfinance as yf
+from io import StringIO
 
 
 # ============================================================
@@ -11,16 +11,20 @@ import yfinance as yf
 
 YEARS = 6
 
-NIFTY500_URL = "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
+NIFTY500_URL = (
+    "https://www.niftyindices.com/IndexConstituent/"
+    "ind_nifty500list.csv"
+)
 
 OUTPUT_FILE = "daily_historical_signals.csv"
 
 
 # ============================================================
-# INDICATORS
+# RSI - WILDER
 # ============================================================
 
 def rsi_wilder(series, period=5):
+
     delta = series.diff()
 
     gain = delta.clip(lower=0)
@@ -40,10 +44,12 @@ def rsi_wilder(series, period=5):
 
     rs = avg_gain / avg_loss
 
-    rsi = 100 - (100 / (1 + rs))
+    return 100 - (100 / (1 + rs))
 
-    return rsi
 
+# ============================================================
+# ADX - WILDER
+# ============================================================
 
 def adx_wilder(high, low, close, period=14):
 
@@ -71,21 +77,18 @@ def adx_wilder(high, low, close, period=14):
         index=high.index
     )
 
-    plus_dm[
+    plus_mask = (
         (up_move > down_move) &
         (up_move > 0)
-    ] = up_move[
-        (up_move > down_move) &
-        (up_move > 0)
-    ]
+    )
 
-    minus_dm[
+    minus_mask = (
         (down_move > up_move) &
         (down_move > 0)
-    ] = down_move[
-        (down_move > up_move) &
-        (down_move > 0)
-    ]
+    )
+
+    plus_dm.loc[plus_mask] = up_move.loc[plus_mask]
+    minus_dm.loc[minus_mask] = down_move.loc[minus_mask]
 
     atr = true_range.ewm(
         alpha=1 / period,
@@ -126,7 +129,7 @@ def adx_wilder(high, low, close, period=14):
 
 
 # ============================================================
-# GET NIFTY 500 STOCK LIST
+# NIFTY 500 STOCK LIST
 # ============================================================
 
 def get_nifty500_symbols():
@@ -143,8 +146,6 @@ def get_nifty500_symbols():
 
     response.raise_for_status()
 
-    from io import StringIO
-
     df = pd.read_csv(
         StringIO(response.text)
     )
@@ -158,7 +159,151 @@ def get_nifty500_symbols():
         if symbol:
             symbols.append(symbol + ".NS")
 
-    return sorted(list(set(symbols)))
+    return sorted(set(symbols))
+
+
+# ============================================================
+# BUILD COMPLETED WEEKLY DATA
+# ============================================================
+
+def build_weekly_data(data):
+
+    weekly = data.resample("W-FRI").agg({
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last"
+    })
+
+    weekly.dropna(inplace=True)
+
+    weekly["RSI5"] = rsi_wilder(
+        weekly["Close"],
+        5
+    )
+
+    weekly["RSI_SMA14"] = (
+        weekly["RSI5"]
+        .rolling(14)
+        .mean()
+    )
+
+    weekly["ADX14"] = adx_wilder(
+        weekly["High"],
+        weekly["Low"],
+        weekly["Close"],
+        14
+    )
+
+    # Find the actual last trading day belonging
+    # to each weekly candle.
+    week_groups = data.groupby(
+        pd.Grouper(freq="W-FRI")
+    )
+
+    completion_dates = []
+
+    for _, group in week_groups:
+
+        if not group.empty:
+            completion_dates.append(
+                group.index[-1]
+            )
+
+    completion_dates = pd.DatetimeIndex(
+        completion_dates
+    )
+
+    weekly = weekly.iloc[
+        -len(completion_dates):
+    ].copy()
+
+    weekly["CompletionDate"] = completion_dates
+
+    weekly.set_index(
+        "CompletionDate",
+        inplace=True
+    )
+
+    return weekly[
+        [
+            "RSI5",
+            "RSI_SMA14",
+            "ADX14"
+        ]
+    ]
+
+
+# ============================================================
+# BUILD COMPLETED MONTHLY DATA
+# ============================================================
+
+def build_monthly_data(data):
+
+    monthly = data.resample("ME").agg({
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last"
+    })
+
+    monthly.dropna(inplace=True)
+
+    monthly["RSI5"] = rsi_wilder(
+        monthly["Close"],
+        5
+    )
+
+    monthly["RSI_SMA14"] = (
+        monthly["RSI5"]
+        .rolling(14)
+        .mean()
+    )
+
+    monthly["ADX14"] = adx_wilder(
+        monthly["High"],
+        monthly["Low"],
+        monthly["Close"],
+        14
+    )
+
+    # Find the actual last trading day belonging
+    # to each monthly candle.
+    month_groups = data.groupby(
+        pd.Grouper(freq="ME")
+    )
+
+    completion_dates = []
+
+    for _, group in month_groups:
+
+        if not group.empty:
+            completion_dates.append(
+                group.index[-1]
+            )
+
+    completion_dates = pd.DatetimeIndex(
+        completion_dates
+    )
+
+    monthly = monthly.iloc[
+        -len(completion_dates):
+    ].copy()
+
+    monthly["CompletionDate"] = completion_dates
+
+    monthly.set_index(
+        "CompletionDate",
+        inplace=True
+    )
+
+    return monthly[
+        [
+            "RSI5",
+            "RSI_SMA14",
+            "ADX14"
+        ]
+    ]
 
 
 # ============================================================
@@ -183,9 +328,14 @@ def process_stock(symbol):
         if data is None or data.empty:
             return []
 
-        # Handle yfinance multi-level columns
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = data.columns.get_level_values(0)
+        if isinstance(
+            data.columns,
+            pd.MultiIndex
+        ):
+            data.columns = (
+                data.columns
+                .get_level_values(0)
+            )
 
         required = [
             "Open",
@@ -195,12 +345,17 @@ def process_stock(symbol):
         ]
 
         for column in required:
+
             if column not in data.columns:
                 return []
 
-        data = data[required].copy()
+        data = data[
+            required
+        ].copy()
 
-        data.dropna(inplace=True)
+        data.dropna(
+            inplace=True
+        )
 
         if len(data) < 100:
             return []
@@ -209,161 +364,87 @@ def process_stock(symbol):
         # DAILY RSI(5)
         # ----------------------------------------------------
 
-        data["Daily_RSI_5"] = rsi_wilder(
+        data["Daily_RSI5"] = rsi_wilder(
             data["Close"],
             5
         )
 
         # ----------------------------------------------------
-        # WEEKLY DATA
+        # WEEKLY INDICATORS
         # ----------------------------------------------------
 
-        weekly = data.resample("W-FRI").agg({
-            "Open": "first",
-            "High": "max",
-            "Low": "min",
-            "Close": "last"
-        })
-
-        weekly.dropna(inplace=True)
-
-        weekly["Weekly_RSI_5"] = rsi_wilder(
-            weekly["Close"],
-            5
+        weekly = build_weekly_data(
+            data
         )
 
-        weekly["Weekly_RSI_SMA14"] = (
-            weekly["Weekly_RSI_5"]
-            .rolling(14)
-            .mean()
+        # ----------------------------------------------------
+        # MONTHLY INDICATORS
+        # ----------------------------------------------------
+
+        monthly = build_monthly_data(
+            data
         )
 
-        weekly["Weekly_ADX14"] = adx_wilder(
-            weekly["High"],
-            weekly["Low"],
-            weekly["Close"],
-            14
-        )
-
-        # Shift weekly indicators by one completed week.
+        # ----------------------------------------------------
+        # POINT-IN-TIME MERGE
         #
-        # This prevents future weekly information from being
-        # used in a historical daily signal.
-        weekly["Weekly_RSI_5"] = weekly["Weekly_RSI_5"].shift(1)
-        weekly["Weekly_RSI_SMA14"] = weekly[
-            "Weekly_RSI_SMA14"
-        ].shift(1)
-
-        weekly["Weekly_ADX14"] = weekly[
-            "Weekly_ADX14"
-        ].shift(1)
-
-        # ----------------------------------------------------
-        # MONTHLY DATA
+        # For every daily date, use the most recent
+        # COMPLETED weekly/monthly candle available
+        # on that date.
         # ----------------------------------------------------
 
-        monthly = data.resample("ME").agg({
-            "Open": "first",
-            "High": "max",
-            "Low": "min",
-            "Close": "last"
-        })
+        data = data.sort_index()
+        weekly = weekly.sort_index()
+        monthly = monthly.sort_index()
 
-        monthly.dropna(inplace=True)
-
-        monthly["Monthly_RSI_5"] = rsi_wilder(
-            monthly["Close"],
-            5
+        data = pd.merge_asof(
+            data,
+            weekly,
+            left_index=True,
+            right_index=True,
+            direction="backward"
         )
 
-        monthly["Monthly_RSI_SMA14"] = (
-            monthly["Monthly_RSI_5"]
-            .rolling(14)
-            .mean()
-        )
-
-        monthly["Monthly_ADX14"] = adx_wilder(
-            monthly["High"],
-            monthly["Low"],
-            monthly["Close"],
-            14
-        )
-
-        # Prevent future monthly information
-        monthly["Monthly_RSI_5"] = monthly[
-            "Monthly_RSI_5"
-        ].shift(1)
-
-        monthly["Monthly_RSI_SMA14"] = monthly[
-            "Monthly_RSI_SMA14"
-        ].shift(1)
-
-        monthly["Monthly_ADX14"] = monthly[
-            "Monthly_ADX14"
-        ].shift(1)
-
-        # ----------------------------------------------------
-        # MAP WEEKLY/MONTHLY VALUES TO DAILY DATA
-        # ----------------------------------------------------
-
-        weekly_values = weekly[
-            [
-                "Weekly_RSI_5",
-                "Weekly_RSI_SMA14",
-                "Weekly_ADX14"
-            ]
-        ].reindex(
-            data.index,
-            method="ffill"
-        )
-
-        monthly_values = monthly[
-            [
-                "Monthly_RSI_5",
-                "Monthly_RSI_SMA14",
-                "Monthly_ADX14"
-            ]
-        ].reindex(
-            data.index,
-            method="ffill"
-        )
-
-        data = data.join(
-            weekly_values
-        )
-
-        data = data.join(
-            monthly_values
+        data = pd.merge_asof(
+            data,
+            monthly,
+            left_index=True,
+            right_index=True,
+            direction="backward",
+            suffixes=(
+                "",
+                "_monthly"
+            )
         )
 
         # ----------------------------------------------------
-        # FIVE CONDITIONS
+        # EXACT 5 CONDITIONS
         # ----------------------------------------------------
 
         condition_1 = (
-            data["Monthly_RSI_5"]
+            data["RSI5_monthly"]
             >
-            data["Monthly_RSI_SMA14"]
+            data["RSI_SMA14_monthly"]
         )
 
         condition_2 = (
-            data["Weekly_RSI_5"]
+            data["RSI5"]
             >
-            data["Weekly_RSI_SMA14"]
+            data["RSI_SMA14"]
         )
 
         condition_3 = (
-            data["Monthly_ADX14"]
+            data["ADX14_monthly"]
             >= 25
         )
 
         condition_4 = (
-            data["Daily_RSI_5"]
+            data["Daily_RSI5"]
             < 30
         )
 
         condition_5 = (
-            data["Weekly_ADX14"]
+            data["ADX14"]
             >= 25
         )
 
@@ -377,14 +458,16 @@ def process_stock(symbol):
 
         matches = data.loc[
             signal
-        ].copy()
+        ]
 
         results = []
 
         for date in matches.index:
 
             results.append({
-                "Date": pd.Timestamp(date).strftime(
+                "Date": pd.Timestamp(
+                    date
+                ).strftime(
                     "%Y-%m-%d"
                 ),
                 "Stock": symbol.replace(
@@ -414,9 +497,14 @@ def main():
     print("NIFTY 500 DAILY HISTORICAL SIGNAL SCANNER")
     print("=" * 60)
 
-    print()
-    print(f"Historical period: {YEARS} years")
-    print("Conditions: 5")
+    print(
+        f"Historical period: {YEARS} years"
+    )
+
+    print(
+        "Conditions: 5"
+    )
+
     print()
 
     symbols = get_nifty500_symbols()
@@ -446,11 +534,10 @@ def main():
             results
         )
 
-        # Small delay to reduce request pressure
         time.sleep(0.2)
 
     # --------------------------------------------------------
-    # SAVE RESULTS
+    # CREATE OUTPUT
     # --------------------------------------------------------
 
     result_df = pd.DataFrame(
@@ -464,7 +551,10 @@ def main():
     if not result_df.empty:
 
         result_df.sort_values(
-            ["Date", "Stock"],
+            [
+                "Date",
+                "Stock"
+            ],
             inplace=True
         )
 
@@ -490,20 +580,20 @@ def main():
         f"Output file: {OUTPUT_FILE}"
     )
 
-    if not result_df.empty:
+    print()
 
-        print()
+    if result_df.empty:
+
         print(
-            result_df.to_string(
-                index=False
-            )
+            "No historical signals found."
         )
 
     else:
 
-        print()
         print(
-            "No historical signals found."
+            result_df.to_string(
+                index=False
+            )
         )
 
 
