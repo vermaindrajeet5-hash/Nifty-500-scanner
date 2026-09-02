@@ -1,4 +1,4 @@
-name: Historical Daily Signals
+name: Historical Daily PIT Signals
 
 on:
   workflow_dispatch:
@@ -22,9 +22,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run historical daily scan
+      - name: Run point-in-time historical scanner
         run: |
-          python Daily_Historical_Signals.py
+          python Daily_Historical_PIT_Signals.py
 
       - name: Send results by Gmail
         env:
@@ -42,7 +42,7 @@ jobs:
           app_password = os.environ["GMAIL_APP_PASSWORD"]
           recipient = os.environ["GMAIL_TO"]
 
-          file = "daily_historical_signals.csv"
+          file = "daily_historical_pit_signals.csv"
 
           df = pd.read_csv(file)
 
@@ -83,5 +83,5 @@ jobs:
       - name: Upload historical signals
         uses: actions/upload-artifact@v4
         with:
-          name: daily-historical-signals
-          path: daily_historical_signals.csv
+          name: daily-historical-pit-signals
+          path: daily_historical_pit_signals.csv
