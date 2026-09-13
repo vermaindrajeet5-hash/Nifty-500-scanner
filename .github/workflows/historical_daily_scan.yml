@@ -28,13 +28,12 @@ jobs:
 
       - name: Check output file
         run: |
-          echo "Checking CSV..."
+          echo "Checking CSV file..."
+
           if [ -f "daily_historical_pit_signals.csv" ]; then
             echo "CSV FOUND"
-            ls -lh daily_historical_pit_signals.csv
             echo ""
-            echo "Number of lines:"
-            wc -l daily_historical_pit_signals.csv
+            ls -lh daily_historical_pit_signals.csv
             echo ""
             echo "First 20 rows:"
             head -20 daily_historical_pit_signals.csv
