@@ -319,7 +319,7 @@ def load_membership():
     )
 
     # --------------------------------------------------------
-    # Convert membership dates to timezone-free datetime
+    # Convert membership dates
     # --------------------------------------------------------
 
     membership["valid_from"] = (
@@ -400,17 +400,11 @@ def load_membership():
 
         print(
             "Membership coverage:",
-            membership["valid_from"]
-            .min()
-            .date(),
+            membership["valid_from"].min().date(),
             "to",
             (
-                membership["valid_to"]
-                .max()
-                .date()
-                if membership["valid_to"]
-                .notna()
-                .any()
+                membership["valid_to"].max().date()
+                if membership["valid_to"].notna().any()
                 else "current"
             )
         )
@@ -608,9 +602,7 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # Request 11 years of data.
-        #
-        # One extra year provides warm-up for indicators.
+        # Download 11 years for indicator warm-up
         # ----------------------------------------------------
 
         download_start = (
@@ -701,7 +693,7 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # DAILY RSI
+        # DAILY RSI(5)
         # ----------------------------------------------------
 
         data["Daily_RSI5"] = rsi_wilder(
@@ -740,7 +732,7 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # Normalize indicator indexes
+        # Normalize indexes
         # ----------------------------------------------------
 
         weekly.index = (
@@ -762,10 +754,9 @@ def process_stock(
         monthly = monthly.sort_index()
 
         # ----------------------------------------------------
-        # ONLY COMPLETED WEEKLY CANDLE
+        # COMPLETED WEEKLY CANDLE
         #
-        # Friday's completed week becomes available
-        # from the following day.
+        # Weekly value becomes available after Friday.
         # ----------------------------------------------------
 
         weekly_for_daily = (
@@ -778,7 +769,7 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # Merge weekly indicators
+        # MERGE WEEKLY INDICATORS
         # ----------------------------------------------------
 
         data = pd.merge_asof(
@@ -790,10 +781,9 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # ONLY COMPLETED MONTHLY CANDLE
+        # COMPLETED MONTHLY CANDLE
         #
-        # Month-end values become available from the
-        # following day.
+        # Monthly value becomes available after month-end.
         # ----------------------------------------------------
 
         monthly_for_daily = (
@@ -806,7 +796,7 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # Merge monthly indicators
+        # MERGE MONTHLY INDICATORS
         # ----------------------------------------------------
 
         data = pd.merge_asof(
@@ -822,7 +812,7 @@ def process_stock(
         )
 
         # ----------------------------------------------------
-        # Keep only requested 10-year period
+        # Keep requested 10-year period
         # ----------------------------------------------------
 
         data = data[
@@ -973,4 +963,13 @@ def process_stock(
         return []
 
 
-# ========================================
+# ============================================================
+# MAIN
+# ============================================================
+
+def main():
+
+    print()
+    print("==============================================")
+    print("NIFTY 500 HISTORICAL PIT SCANNER")
+    print("============
