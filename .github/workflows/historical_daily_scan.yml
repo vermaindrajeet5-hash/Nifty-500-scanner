@@ -1,0 +1,99 @@
+name: Historical Daily PIT Signals
+
+on:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run historical scanner
+        run: |
+          python Daily_Historical_PIT_Signals.py
+
+      - name: Send results by Gmail
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+        run: |
+          python - <<'PY'
+          import os
+          import smtplib
+          import pandas as pd
+          from email.mime.text import MIMEText
+
+          username = os.environ["GMAIL_USERNAME"]
+          app_password = os.environ["GMAIL_APP_PASSWORD"]
+          recipient = os.environ["GMAIL_TO"]
+
+          file = "daily_historical_pit_signals.csv"
+
+          if not os.path.exists(file):
+              raise FileNotFoundError(
+                  "daily_historical_pit_signals.csv was not created"
+              )
+
+          df = pd.read_csv(file)
+
+          if df.empty:
+              body = """NIFTY 500 HISTORICAL DAILY SIGNALS
+
+          No historical signals were found.
+          """
+          else:
+              grouped = df.groupby("Date")["Stock"].apply(list)
+
+              lines = [
+                  "NIFTY 500 HISTORICAL DAILY SIGNALS",
+                  "",
+                  "Date        Stocks",
+                  "------------------------------"
+              ]
+
+              for date, stocks in grouped.items():
+                  lines.append(
+                      f"{date}  {', '.join(stocks)}"
+                  )
+
+              body = "\n".join(lines)
+
+          message = MIMEText(body)
+          message["Subject"] = "NIFTY 500 HISTORICAL DAILY SIGNALS"
+          message["From"] = username
+          message["To"] = recipient
+
+          with smtplib.SMTP_SSL(
+              "smtp.gmail.com",
+              465
+          ) as server:
+              server.login(
+                  username,
+                  app_password
+              )
+
+              server.send_message(message)
+
+          print("GMAIL: EMAIL SENT SUCCESSFULLY")
+          PY
+
+      - name: Upload historical signals
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-historical-signals
+          path: daily_historical_pit_signals.csv
