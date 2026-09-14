@@ -1,0 +1,115 @@
+name: NIFTY 500 7 Year PIT ATH Study
+
+on:
+  workflow_dispatch:
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas yfinance requests scipy
+
+      - name: Run 7 Year PIT ATH Study
+        run: |
+          python Nifty500_PIT_7Y_ATH_Study.py
+
+      - name: Check ATH event file
+        run: |
+          echo "Checking ATH event file..."
+          if [ -f "nifty500_PIT_7Y_ATH_events.csv" ]; then
+            echo "ATH EVENTS CSV FOUND"
+            ls -lh nifty500_PIT_7Y_ATH_events.csv
+            echo ""
+            head -20 nifty500_PIT_7Y_ATH_events.csv
+          else
+            echo "ATH EVENTS CSV NOT FOUND"
+            exit 1
+          fi
+
+      - name: Check summary file
+        run: |
+          echo "Checking summary file..."
+          if [ -f "nifty500_PIT_7Y_ATH_summary.csv" ]; then
+            echo "SUMMARY CSV FOUND"
+            ls -lh nifty500_PIT_7Y_ATH_summary.csv
+            echo ""
+            head -20 nifty500_PIT_7Y_ATH_summary.csv
+          else
+            echo "SUMMARY CSV NOT FOUND"
+            exit 1
+          fi
+
+      - name: Send results by Gmail
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+        run: |
+          python - <<'PY'
+          import os
+          import smtplib
+          from email.message import EmailMessage
+
+          username = os.environ["GMAIL_USERNAME"]
+          password = os.environ["GMAIL_APP_PASSWORD"]
+          recipient = os.environ["GMAIL_TO"]
+
+          files = [
+              "nifty500_PIT_7Y_ATH_events.csv",
+              "nifty500_PIT_7Y_ATH_summary.csv",
+              "nifty500_PIT_7Y_ATH_errors.csv",
+          ]
+
+          msg = EmailMessage()
+          msg["Subject"] = "NIFTY 500 - 7 Year Historical PIT ATH Study"
+          msg["From"] = username
+          msg["To"] = recipient
+          msg.set_content(
+              "NIFTY 500 7 Year Point-in-Time ATH Study is complete.\n\n"
+              "The attached CSV files contain the historical ATH events, "
+              "stock-by-stock summary, and any data errors."
+          )
+
+          for filename in files:
+              if os.path.exists(filename):
+                  with open(filename, "rb") as f:
+                      msg.add_attachment(
+                          f.read(),
+                          maintype="text",
+                          subtype="csv",
+                          filename=filename,
+                      )
+
+          with smtplib.SMTP_SSL(
+              "smtp.gmail.com",
+              465,
+              timeout=60,
+          ) as smtp:
+              smtp.login(username, password)
+              smtp.send_message(msg)
+
+          print("EMAIL SENT SUCCESSFULLY")
+          PY
+
+      - name: Upload ATH study results
+        uses: actions/upload-artifact@v4
+        with:
+          name: nifty500-pit-7y-ath-study
+          path: |
+            nifty500_PIT_7Y_ATH_events.csv
+            nifty500_PIT_7Y_ATH_summary.csv
+            nifty500_PIT_7Y_ATH_errors.csv
+          if-no-files-found: warn
