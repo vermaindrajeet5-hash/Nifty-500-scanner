@@ -1,0 +1,51 @@
+name: NIFTY 500 6-Condition Profitability Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages
+        run: |
+          pip install pandas numpy scipy yfinance
+
+      - name: Run 6-condition backtest
+        run: |
+          python Nifty500_6Condition_Supertrend_Backtest.py
+
+      - name: Send results by email
+        uses: dawidd6/action-send-mail@v6
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "NIFTY 500 6-Condition Profitability Stocklist"
+          to: ${{ secrets.GMAIL_TO }}
+          from: ${{ secrets.GMAIL_USERNAME }}
+          body: |
+            NIFTY 500 6-condition historical test completed.
+
+            The attached files contain the stocks/events that qualified:
+            1. 5-condition baseline events
+            2. 6-condition events where Daily Supertrend(10,1) turns GREEN within 0-5 trading days after Daily RSI(5) <= 30
+            3. 6-condition profitability summary for 5D, 10D, 20D and 60D
+            4. Stock-wise 6-condition results
+
+            Forward profitability is calculated from the signal-day close.
+          attachments: |
+            nifty500_6condition_events.csv
+            nifty500_6condition_summary.csv
+            nifty500_6condition_by_stock.csv
