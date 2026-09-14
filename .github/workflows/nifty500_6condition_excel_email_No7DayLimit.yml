@@ -1,0 +1,49 @@
+name: NIFTY 500 RSI Supertrend 10Y Stock List
+
+on:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages
+        run: |
+          pip install pandas numpy yfinance openpyxl
+
+      - name: Run historical scan
+        run: |
+          python Nifty500_6Condition_RSI_Supertrend_10Y_No7DayLimit.py
+
+      - name: Email Excel result
+        uses: dawidd6/action-send-mail@v6
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "NIFTY 500 10Y RSI + Supertrend Qualifying Stocks"
+          to: ${{ secrets.GMAIL_TO }}
+          from: ${{ secrets.GMAIL_USERNAME }}
+          body: |
+            10-year point-in-time NIFTY 500 historical scan completed.
+
+            Attached Excel file contains the date-wise qualifying stocks.
+
+            Original 5 RSI/ADX criteria remain mandatory.
+            Daily RSI(5) must touch 30 or below.
+            After that, RSI(5) must later cross above its SMA(14).
+            Supertrend(10,1) must later be GREEN.
+            There is NO 0-7 trading-day restriction.
+            RSI cross and Supertrend GREEN do not need to occur on the same day.
+          attachments: nifty500_6condition_datewise.xlsx
