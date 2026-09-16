@@ -1,0 +1,51 @@
+name: NIFTY 500 Monthly Supertrend Daily RSI Historical Scan
+
+on:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy yfinance openpyxl
+
+      - name: Run 10-year scan
+        run: |
+          python monthly_supertrend_fixed.py
+
+      - name: Email Excel result
+        uses: dawidd6/action-send-mail@v6
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "NIFTY 500 Monthly Supertrend + Daily RSI Historical Stock List"
+          to: ${{ secrets.GMAIL_TO }}
+          from: ${{ secrets.GMAIL_USERNAME }}
+          body: |
+            NIFTY 500 10-year historical scan completed.
+
+            The attached Excel file contains the date-wise qualifying stocks.
+
+            Rules:
+            - Historical point-in-time NIFTY 500 membership
+            - Monthly Supertrend (10,1) must turn GREEN
+            - Daily scan starts after the monthly GREEN turn
+            - Monthly Supertrend must still be GREEN on the daily RSI date
+            - Daily RSI(5) must be strictly below 31
+            - No 0-7 day restriction
+            - No profitability/backtest calculation
+          attachments: nifty500_monthly_supertrend_daily_rsi_history.xlsx
