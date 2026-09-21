@@ -1,0 +1,30 @@
+name: NIFTY 500 Monthly RSI-SMA Daily EMA20 ST
+on:
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pandas numpy yfinance openpyxl
+      - run: python nifty500_monthly_rsi_daily_ema_st.py
+      - name: Email Excel
+        uses: dawidd6/action-send-mail@v6
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "NIFTY 500 Historical RSI-SMA EMA20 Supertrend Signals"
+          to: ${{ secrets.GMAIL_TO }}
+          from: ${{ secrets.GMAIL_USERNAME }}
+          body: |
+            Historical scan completed.
+            Monthly RSI(5) crosses above SMA(14) of RSI(5), remains above it;
+            daily candle touches EMA20 and Daily Supertrend(10,1) is GREEN.
+            Historical NIFTY 500 membership is applied on the exact signal date.
+          attachments: nifty500_monthly_rsi_daily_ema_st.xlsx
