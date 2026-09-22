@@ -1,0 +1,30 @@
+name: Nifty200 Momentum 30 Historical Scanner
+on:
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pandas numpy yfinance openpyxl requests
+      - run: python nifty200_momentum30_historical_scanner.py
+      - name: Email Excel
+        uses: dawidd6/action-send-mail@v6
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "Nifty200 Momentum 30 Historical Scanner Results"
+          to: ${{ secrets.GMAIL_TO }}
+          from: ${{ secrets.GMAIL_USERNAME }}
+          body: |
+            Nifty200 Momentum 30 scanner completed.
+            Monthly RSI(5) / SMA(14), daily EMA20 touch,
+            Supertrend(10,1) GREEN and daily RSI(5) > SMA(14).
+            Previous completed monthly candle is used.
+          attachments: nifty200_momentum30_historical_signals.xlsx
