@@ -492,6 +492,14 @@ def scan_symbol(
         daily["ST_Direction"] == 1
     )
 
+    # Daily MACD(12,26,9), based on Close.
+    # Blue MACD line must be above red signal line.
+    ema12 = daily["Close"].ewm(span=12, adjust=False, min_periods=12).mean()
+    ema26 = daily["Close"].ewm(span=26, adjust=False, min_periods=26).mean()
+    daily["MACD_Line"] = ema12 - ema26
+    daily["MACD_Signal"] = daily["MACD_Line"].ewm(span=9, adjust=False, min_periods=9).mean()
+    daily["MACD_Blue_Above_Red"] = daily["MACD_Line"] > daily["MACD_Signal"]
+
     # --------------------------------------------------------
     # MONTHLY INDICATORS
     # --------------------------------------------------------
@@ -678,6 +686,9 @@ def scan_symbol(
             daily["Daily_RSI5"]
             > daily["Daily_RSI5_SMA14"]
         )
+
+        # Daily MACD(12,26,9): blue MACD line > red signal line.
+        & daily["MACD_Blue_Above_Red"].fillna(False)
     )
 
     result = daily.loc[signal].copy()
@@ -760,6 +771,9 @@ def scan_symbol(
             ].values,
 
             "Supertrend_Green": True,
+            "MACD_Line": result["MACD_Line"].values,
+            "MACD_Signal": result["MACD_Signal"].values,
+            "MACD_Blue_Above_Red": True,
         }
     )
 
@@ -901,6 +915,7 @@ def main():
                 "Daily Supertrend(10,1) is GREEN / positive",
                 "Daily Low <= EMA20 and Daily Close > EMA20 (touch EMA20 and close above it)",
                 "Daily RSI(5) > its SMA(14)",
+                "Daily MACD(12,26,9) blue MACD line > red signal line",
                 "Daily signal uses the previous completed monthly candle",
                 "Stock must be a NIFTY 500 member on the exact signal date",
             ],
