@@ -1,4 +1,4 @@
-name: NIFTY 500 10Y Monthly ADX Daily Scanner
+name: Trial 1 - NIFTY 500 10Y Scanner
 
 on:
   workflow_dispatch:
@@ -32,7 +32,7 @@ jobs:
           secure: true
           username: ${{ secrets.GMAIL_USERNAME }}
           password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          subject: "NIFTY 500 10-Year Historical Signals"
+          subject: "Trial 1 - NIFTY 500 10-Year Historical Signals"
           to: ${{ secrets.GMAIL_TO }}
           from: ${{ secrets.GMAIL_USERNAME }}
           body: |
@@ -50,6 +50,7 @@ jobs:
             Supertrend(10,1) GREEN
             Low <= EMA20 and Close > EMA20 (touch EMA20 and close above it)
             RSI(5) > SMA14
+            MACD(12,26,9): blue MACD line > red signal line
 
             The Excel contains Date + Stock and supporting
             indicator values, plus Rules and Data Errors.
