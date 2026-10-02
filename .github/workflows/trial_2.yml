@@ -1,0 +1,46 @@
+name: Trial 2 - NIFTY 500 10Y Scanner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages
+        run: |
+          pip install pandas numpy yfinance openpyxl
+
+      - name: Run historical scanner
+        run: |
+          python trial_2.py
+
+      - name: Email Excel
+        uses: dawidd6/action-send-mail@v6
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "Trial 2 - NIFTY 500 10-Year Historical Signals"
+          to: ${{ secrets.GMAIL_TO }}
+          from: ${{ secrets.GMAIL_USERNAME }}
+          body: |
+            NIFTY 500 10-year historical scanner completed.
+
+            WEEKLY FILTER:
+            Previous completed weekly candle RSI(5) > its SMA(14).
+
+            All Trial 1 monthly and daily conditions remain in place.
+            The Excel contains signal details, Rules, and Data Errors.
+          attachments: trial_2_nifty500_10yr_signals.xlsx
