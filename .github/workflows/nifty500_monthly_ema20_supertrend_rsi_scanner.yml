@@ -1,0 +1,33 @@
+name: NIFTY 500 Monthly EMA20 Supertrend RSI Scanner
+
+on:
+  # First calendar day monthly at 10:00 AM India time; scans previous completed month.
+  schedule:
+    - cron: "30 4 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monthly-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip pandas numpy yfinance requests openpyxl
+
+      - name: Run 10-year historical scan and email Excel
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+        run: python nifty500_monthly_ema20_supertrend_rsi_scanner.py
