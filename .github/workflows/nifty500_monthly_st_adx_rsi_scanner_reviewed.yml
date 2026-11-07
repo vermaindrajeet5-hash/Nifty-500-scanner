@@ -1,0 +1,42 @@
+name: NIFTY 500 Monthly Supertrend ADX RSI Scanner
+
+on:
+  # 12:00 UTC = 17:30 IST. Python verifies the final NSE trading session.
+  schedule:
+    - cron: "0 12 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy yfinance requests openpyxl exchange-calendars
+      - name: Run scanner
+        env:
+          YEARS_BACK: "10"
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO: ${{ secrets.GMAIL_TO }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: python nifty500_monthly_st_adx_rsi_scanner_reviewed.py
+      - name: Upload Excel report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nifty500-monthly-scan
+          path: nifty500_monthly_supertrend_adx_rsi.xlsx
+          if-no-files-found: ignore
+          retention-days: 30
